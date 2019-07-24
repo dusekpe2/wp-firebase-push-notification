@@ -139,7 +139,7 @@ Class Firebase_Push_Notification
     }
 
     function fcm_notification($content, $post_id){
-        $topic =  "'".get_option('fcm_topic')."' in topics";
+        $topic =  "/topics/".get_option('fcm_topic');
         $apiKey = get_option('stf_fcm_api');
         $url = 'https://fcm.googleapis.com/fcm/send';
         $headers = array(
@@ -155,15 +155,14 @@ Class Firebase_Push_Notification
         $notification = array(
             // when application close then post field 'notification' parameter work
             'body'  => $content,
-            'sound' => 'default'
+            "content_available" => true,
+            "priority" => "high",
+            "title" => "Další článek na Dobrých Zprávách!"
         );
 
         $post = array(
-            'condition'         => $topic,
-            'notification'      => $notification,
-            "content_available" => false,
-            'priority'          => 'high',
-            'data'              => $notification_data
+            "to"         => $topic,
+            "notification"      => $notification
         );
         //echo '<pre>';
         //var_dump($post);
