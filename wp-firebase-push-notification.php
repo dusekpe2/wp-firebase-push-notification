@@ -157,7 +157,8 @@ Class Firebase_Push_Notification
             'body'  => $content,
             "content_available" => true,
             "priority" => "high",
-            "title" => "Další článek na Dobrých Zprávách!"
+            "title" => "Další článek na Dobrých Zprávách!",
+            "icon" => "notification_icon"
         );
 
         $post = array(
