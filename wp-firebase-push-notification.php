@@ -2,9 +2,9 @@
 /*
 Plugin Name:Wordpress Firebase Push Notification
 Description:Notify your users of new posts with Firebase cloud messaging (FCM)
-Version:1
-Author:sony7596, miraclewebssoft, reachbaljit
-Author URI:http://www.miraclewebsoft.com
+Version:4
+Author:dusekpetr
+Author URI:https://github.com/dusekpe2/wp-firebase-push-notification
 License:GPL2
 License URI:https://www.gnu.org/licenses/gpl-2.0.html
 */
@@ -22,9 +22,10 @@ if (!defined("FCM_TD")) define("FCM_TD", 'fcm_td');
 Class Firebase_Push_Notification
 {
     public $pre_name = 'fcm';
+	public $today = '2021-03-31';
 
     public function __construct()
-    {
+    {	
         // Installation and uninstallation hooks
         register_activation_hook(__FILE__, array($this, $this->pre_name . '_activate'));
         register_deactivation_hook(__FILE__, array($this, $this->pre_name . '_deactivate'));
@@ -68,7 +69,6 @@ Class Firebase_Push_Notification
 
     public function fcm_activate()
     {
-
     }
 
     public function fcm_deactivate()
@@ -78,10 +78,16 @@ Class Firebase_Push_Notification
 
     function fcm_settings()
     {    //register our settings
-        register_setting('fcm_group', 'stf_fcm_api');
+        register_setting('fcm_group', 'stf_fcm_api_android');
+        register_setting('fcm_group', 'stf_fcm_api_ios');
         register_setting('fcm_group', 'fcm_option');
-        register_setting('fcm_group', 'fcm_topic');
-        register_setting('fcm_group', 'fcm_disable');
+        register_setting('fcm_group', 'fcm_topic_production');
+        register_setting('fcm_group', 'fcm_topic_stage');
+        register_setting('fcm_group', 'fcm_topic_development');
+        register_setting('fcm_group', 'disable_production');
+		register_setting('fcm_group', 'disable_stage');
+		register_setting('fcm_group', 'disable_development');
+		register_setting('fcm_group', 'post_disable');
         register_setting('fcm_group', 'fcm_update_disable');
         register_setting('fcm_group', 'fcm_page_disable');
         register_setting('fcm_group', 'fcm_update_page_disable');
@@ -108,12 +114,29 @@ Class Firebase_Push_Notification
         // $content = 'There are new post notification from '.$from;
         $content = $post->post_title;
 
-        if (get_option('stf_fcm_api') && get_option('fcm_topic')) {
+        if (get_option('stf_fcm_api_ios') && get_option('fcm_topic_production') && get_option('fcm_topic_stage') && get_option('fcm_topic_development')) {
             $published_at_least_once = get_post_meta( $post_id, 'is_published', true );
-
-            if (!$published_at_least_once && get_option('fcm_disable') != 1) {
+			$isNewer = false;
+			
+			if (strtotime($post->post_date) > strtotime($this->today)) {
+				$isNewer = true;
+			}
+			
+            if (!$published_at_least_once && get_option('post_disable') != 1 && $isNewer) {
                 $published_at_least_once = true;
-                $this->fcm_notification($content, (string) $post_id);
+                $this->fcm_notification_android($content, (string) $post_id);
+				
+				if (get_option('disable_production') != 1) {
+					$this->fcm_notification_ios($content, (string) $post_id, 'fcm_topic_production');
+				}
+
+				if (get_option('disable_stage') != 1) {
+					$this->fcm_notification_ios($content, (string) $post_id, 'fcm_topic_stage');
+				}
+
+				if (get_option('disable_development') != 1) {
+					$this->fcm_notification_ios($content, (string) $post_id, 'fcm_topic_development');
+				}
             }
 
             update_post_meta( $post_id, 'is_published', $published_at_least_once );
@@ -123,13 +146,15 @@ Class Firebase_Push_Notification
     function fcm_test_notification(){
         $content = 'Test Notification from FCM Plugin';
 
-        $result = $this->fcm_notification($content, '0');
+        //$resultAndroid = $this->fcm_notification_android($content, '0');
+        $resultIos = $this->fcm_notification_ios($content, '0', 'fcm_topic_development');
 
         echo '<div class="row">';
         echo '<div><h2>Debug Information</h2>';
 
         echo '<pre>';
-        printf($result);
+        printf($resultAndroid);
+        printf($resultIos);
         echo '</pre>';
 
         echo '<p><a href="'. admin_url('admin.php').'?page=test_notification">Retry</a></p>';
@@ -138,9 +163,9 @@ Class Firebase_Push_Notification
         echo '</div>';
     }
 
-    function fcm_notification($content, $post_id){
-        $topic =  "/topics/".get_option('fcm_topic');
-        $apiKey = get_option('stf_fcm_api');
+    function fcm_notification_android($content, $post_id){
+        $topic =  "/topics/".get_option('fcm_topic_production');
+        $apiKey = get_option('stf_fcm_api_android');
         $url = 'https://fcm.googleapis.com/fcm/send';
         $headers = array(
             'Authorization: key=' . $apiKey,
@@ -165,6 +190,70 @@ Class Firebase_Push_Notification
             "to"         => $topic,
             "notification"      => $notification
         );
+        //echo '<pre>';
+        //var_dump($post);
+        // Initialize curl handle
+        $ch = curl_init();
+
+        // Set URL to GCM endpoint
+        curl_setopt($ch, CURLOPT_URL, $url);
+
+        // Set request method to POST
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Set our custom headers
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        // Get the response back as string instead of printing it
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        // Set JSON post data
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post));
+
+        // Actually send the push
+        $result = curl_exec($ch);
+
+        // Close curl handle
+        curl_close($ch);
+
+        // Debug GCM response
+
+        $result_de = json_decode($result);
+
+        return $result;
+
+        //var_dump($result); die;
+
+    }
+
+    function fcm_notification_ios($content, $post_id, $target){
+        $topic =  "/topics/".get_option($target);
+        $apiKey = get_option('stf_fcm_api_ios');
+        $url = 'https://fcm.googleapis.com/fcm/send';
+        $headers = array(
+            'Authorization: key=' . $apiKey,
+            'Content-Type: application/json'
+        );
+        $notification_data = array(
+            // when application open then post field 'data' parameter work so 'message' and 'body' key should have same text or value
+            'message'           => $content,
+            'post_id'           => $post_id
+        );
+
+        $notification = array(
+            // when application close then post field 'notification' parameter work
+            'body'  => $content,
+            "content_available" => true,
+            "priority" => "high",
+            "title" => "Další článek na Dobrých Zprávách!",
+            "icon" => "notification_icon"
+        );
+
+		$post = array(
+            "to"         => $topic,
+            "notification"      => $notification
+        );
+
         //echo '<pre>';
         //var_dump($post);
         // Initialize curl handle
